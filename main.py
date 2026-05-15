@@ -167,3 +167,33 @@ def run_string_security_tests(pk, original_text):
     if empty_res == "":
         print("[PASSED] Edge Case: Empty string handled correctly.")
 run_string_security_tests(pk, my_message)
+
+
+def benchmark_performance(public_key, private_key):  # וודא שזה private_key
+    test_messages = [
+        "A",
+        "Hello",
+        "Cyber Security 2026"
+    ]
+
+    print(f"{'Message Length':<20} | {'Enc Time (s)':<15} | {'Dec Time (s)':<15}")
+    print("-" * 55)
+
+    for msg in test_messages:
+        # הצפנה
+        start_enc = time.time()
+        cipher = encrypt_string(public_key, msg)
+        end_enc = time.time()
+
+        # פענוח - וודא שאתה מעביר את private_key שקיבלת כפרמטר
+        start_dec = time.time()
+        decrypted = decrypt_string(cipher, private_key)
+        end_dec = time.time()
+
+        print(f"{len(msg):<20} | {end_enc - start_enc:<15.5f} | {end_dec - start_dec:<15.5f}")
+
+
+# כשאתה קורא לפונקציה בסוף הקובץ:
+pk, sk = generate_keys()  # sk הוא המפתח הפרטי (Secret Key)
+my_message = "CyberProject2026"
+benchmark_performance(pk, sk)  # תעביר את sk כאן
