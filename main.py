@@ -1,129 +1,169 @@
 import numpy as np
+import time
 
-# פרמטרים בסיסיים (גרסה מופשטת לצרכי לימוד)
-MODULO = 3329  # הערך הסטנדרטי של Kyber
-N = 4  # ממד המטריצה (במציאות הוא גדול בהרבה)
+# --- 1. הגדרת פרמטרים (על פי תקן Kyber/ML-KEM בגרסה מופשטת) ---
+MODULO = 3329  # המודולו הסטנדרטי [cite: 28]
+N = 4  # ממד המטריצה (לצורכי הפרויקט הלימודי) [cite: 56]
 
+
+# --- 2. פונקציות ליבת האלגוריתם ---
 
 def generate_keys():
-    # 1. יצירת מטריצה ציבורית אקראית A
-    A = np.random.randint(0, MODULO, (N, N))
+    """ייצור מפתח ציבורי ופרטי מבוסס Module-LWE [cite: 52, 58]"""
+    A = np.random.randint(0, MODULO, (N, N))  # מטריצה ציבורית
+    s = np.random.randint(-2, 3, size=(N, 1))  # מפתח פרטי (ווקטור סודי)
+    e = np.random.randint(-1, 2, size=(N, 1))  # רעש (Error)
 
-    # 2. יצירת מפתח פרטי s (ווקטור עם ערכים קטנים)
-    s = np.random.randint(-2, 3, size=(N, 1))
-
-    # 3. יצירת רעש e (שגיאה קטנה)
-    e = np.random.randint(-1, 2, size=(N, 1))
-
-    # 4. חישוב המפתח הציבורי: t = A*s + e
+    # חישוב המפתח הציבורי: t = As + e
     t = (np.matmul(A, s) + e) % MODULO
-
-    return (A, t), s  # (מפתח ציבורי), מפתח פרטי
-
-
-# אליס מייצרת מפתחות
-public_key, private_key = generate_keys()
-A, t = public_key
+    return (A, t), s
 
 
 def encrypt(public_key, message_bit):
+    """הצפנת ביט בודד (0 או 1) [cite: 58]"""
     A, t = public_key
-
-    # בוב בוחר ווקטור אקראי r ורעש e1, e2
     r = np.random.randint(-2, 3, size=(N, 1))
     e1 = np.random.randint(-1, 2, size=(N, 1))
     e2 = np.random.randint(-1, 2)
 
-    # חישוב u = A_transpose * r + e1
+    # u = A^T * r + e1
     u = (np.matmul(A.T, r) + e1) % MODULO
-
-    # חישוב v = t_transpose * r + e2 + (הודעה מוזזת)
-    # אנחנו מזיזים את הביט (0 או 1) לחצי מגודל המודולו כדי שיהיה קל לזהות אותו ברעש
+    # v = t^T * r + e2 + (Message * MODULO/2)
     v = (np.matmul(t.T, r) + e2 + (message_bit * (MODULO // 2))) % MODULO
-
     return u, v
 
 
-# בוב מצפין את הביט '1'
-message = 1
-ciphertext = encrypt(public_key, message)
-
-
 def decrypt(ciphertext, private_key):
+    """פענוח ביט בודד בעזרת המפתח הפרטי [cite: 58, 60]"""
     u, v = ciphertext
     s = private_key
 
-    # חישוב הערך המקורב: v - s_transpose * u
+    # ניקוי הרעש: v - s^T * u
     res = (v - np.matmul(s.T, u)) % MODULO
 
-    # אם התוצאה קרובה יותר ל-MODULO/2, זה '1'. אם קרובה ל-0, זה '0'.
-    if res > (MODULO // 4) and res < (3 * MODULO // 4):
+    # החלטה: האם הערך קרוב יותר ל-0 או ל-MODULO/2
+    if (MODULO // 4) < res < (3 * MODULO // 4):
         return 1
+    return 0
+
+
+# --- 3. פונקציות לטיפול בטקסט מלא (Arbitrary Message)  ---
+
+def encrypt_string(public_key, plain_text):
+    """הפיכת מחרוזת לרשימת צפנים קוונטיים"""
+    ciphertext_list = []
+    for char in plain_text:
+        bits = format(ord(char), '08b')  # הפיכת תו ל-8 ביטים
+        for bit in bits:
+            cipher = encrypt(public_key, int(bit))
+            ciphertext_list.append(cipher)
+    return ciphertext_list
+
+
+def decrypt_string(ciphertext_list, private_key):
+    """פענוח רשימת צפנים חזרה למחרוזת טקסט"""
+    decrypted_bits = ""
+    for cipher in ciphertext_list:
+        bit = decrypt(cipher, private_key)
+        decrypted_bits += str(bit)
+
+    chars = []
+    for i in range(0, len(decrypted_bits), 8):
+        byte = decrypted_bits[i:i + 8]
+        chars.append(chr(int(byte, 2)))
+    return "".join(chars)
+
+
+# --- 4. הרצה ובדיקה ---
+
+if __name__ == "__main__":
+    # יצירת מפתחות (אליס)
+    pk, sk = generate_keys()
+
+    # הודעה לבדיקה
+    my_message = "CyberProject2026"
+    print(f"--- Testing Full String Encryption ---")
+    print(f"Original Text: {my_message}")
+
+    # הצפנה (בוב)
+    encrypted_data = encrypt_string(pk, my_message)
+    print(f"Encrypted blocks: {len(encrypted_data)}")
+
+    # פענוח (אליס)
+    decrypted_result = decrypt_string(encrypted_data, sk)
+    print(f"Decrypted Text: {decrypted_result}")
+
+    # בדיקת תקינות (Validation)
+    if my_message == decrypted_result:
+        print("\n[SUCCESS] The message was recovered perfectly!")
     else:
-        return 0
+        print("\n[FAILED] There was an error in the recovery process.")
 
 
-# אליס מפענחת
-decrypted_message = decrypt(ciphertext, private_key)
-print(f"Original Message: {message}")
-print(f"Decrypted Message: {decrypted_message}")
+def run_performance_benchmarking(pk, message):
+    print(f"\n--- Performance Analysis ---")
+
+    # 1. מדידת זמן הצפנה
+    start_enc = time.time()
+    encrypted_data = encrypt_string(pk, message)
+    end_enc = time.time()
+    enc_time = end_enc - start_enc
+
+    # 2. מדידת זמן פענוח
+    start_dec = time.time()
+    decrypted_result = decrypt_string(encrypted_data, sk)
+    end_dec = time.time()
+    dec_time = end_dec - start_dec
+
+    # 3. ניתוח גדלים (Overhead)
+    original_size = len(message) * 8  # גודל בביטים
+    # כל בלוק צופן מורכב מ-u (וקטור בגודל N) ומ-v (ערך בודד)
+    # במימוש שלנו כל מספר הוא integer
+    cipher_elements = len(encrypted_data) * (N + 1)
+
+    print(f"Total Encryption Time: {enc_time:.4f} seconds")
+    print(f"Total Decryption Time: {dec_time:.4f} seconds")
+    print(f"Average time per character: {enc_time / len(message):.5f} seconds")
+    print(f"Data Expansion Factor: {cipher_elements / len(message):.1f}x (Lattice overhead)")
 
 
-def run_tests():
-    print("--- Starting Cryptographic Test Suite ---")
+# הוסף את השורה הזו בסוף ה-if __name__ == "__main__":
+run_performance_benchmarking(pk, my_message)
 
-    # 1. בדיקת סבב מלא (Round-trip Test)
-    # מוודא שהודעה לגיטימית עוברת את כל התהליך בהצלחה
-    public_key, private_key = generate_keys()
 
-    test_bits = [0, 1]
-    round_trip_success = True
-    for bit in test_bits:
-        cipher = encrypt(public_key, bit)
-        decrypted = decrypt(cipher, private_key)
-        if decrypted != bit:
-            round_trip_success = False
-            print(f"[FAILED] Round-trip failed for bit {bit}")
+def run_string_security_tests(pk, original_text):
+    print(f"\n--- String Security & Negative Tests ---")
 
-    if round_trip_success:
-        print("[PASSED] Round-trip: Messages encrypted and decrypted correctly.")
+    # 1. בדיקת שינוי תו בודד בצופן (Tampering Test)
+    # אנחנו משנים את הצופן של התו הראשון כדי לראות אם הפענוח נהרס
+    encrypted_data = encrypt_string(pk, original_text)
 
-    # 2. בדיקה שלילית: מפתח לא נכון (Wrong Key Test)
-    # מדמה מצב של תוקף שמנסה לפענח עם מפתח פרטי אחר
-    _, wrong_private_key = generate_keys()
-    cipher = encrypt(public_key, 1)
-    decrypted = decrypt(cipher, wrong_private_key)
+    # ניקח את הביט הראשון של התו הראשון ונשבש אותו
+    u_orig, v_orig = encrypted_data[0]
+    tampered_v = (v_orig + (MODULO // 2)) % MODULO
+    encrypted_data[0] = (u_orig, tampered_v)
 
-    if decrypted != 1:
-        print("[PASSED] Negative Test: Wrong key failed to decrypt (as expected).")
+    decrypted_text = decrypt_string(encrypted_data, sk)
+
+    if decrypted_text != original_text:
+        print(f"[PASSED] Tampering Test: Changing one bit corrupted the message (Security verified).")
+        print(f"Resulting string (corrupted): {decrypted_text}")
     else:
-        print("[WARNING] Negative Test: Decryption with wrong key accidentally succeeded.")
+        print(f"[FAILED] Tampering Test: The system is too stable, it ignored the change.")
 
-    # 3. בדיקה שלילית: שינוי הצופן (Tampered Ciphertext)
-    # מדמה תוקף שמשנה את המידע המוצפן בדרך (Malleability attack)
-    u, v = encrypt(public_key, 1)
-    # שינוי משמעותי בצופן - הוספת רעש חזק ל-v
-    tampered_v = (v + (MODULO // 2)) % MODULO
-    tampered_cipher = (u, tampered_v)
+    # 2. בדיקת מפתח לא תואם (Invalid Key Test)
+    # יצירת סט מפתחות חדש לגמרי וניסיון לפענח איתו את ההודעה של אליס
+    _, wrong_sk = generate_keys()
+    decrypted_with_wrong_key = decrypt_string(encrypt_string(pk, original_text), wrong_sk)
 
-    decrypted_tampered = decrypt(tampered_cipher, private_key)
-    if decrypted_tampered != 1:
-        print("[PASSED] Negative Test: Tampered ciphertext resulted in incorrect decryption.")
+    if decrypted_with_wrong_key != original_text:
+        print(f"[PASSED] Invalid Key Test: Wrong private key could not recover the original text.")
     else:
-        print("[FAILED] Negative Test: Algorithm was too resistant to tampering!")
+        print(f"[FAILED] Invalid Key Test: Security breach! Wrong key decrypted the message.")
 
-    # 4. בדיקת עקביות (Consistency)
-    # מוודא שהרנדומליות של בוב לא שוברת את הפענוח של אליס
-    consistency_passed = True
-    for _ in range(100):
-        c = encrypt(public_key, 0)
-        if decrypt(c, private_key) != 0:
-            consistency_passed = False
-            break
-
-    if consistency_passed:
-        print("[PASSED] Consistency: 100 random encryptions decrypted successfully.")
-
-
-# הרצת הבדיקות
-run_tests()
+    # 3. בדיקת מקרה קצה: מחרוזת ריקה (Empty String)
+    # סעיף 4.4 דורש בדיקת Edge cases כמו empty messages
+    empty_res = decrypt_string(encrypt_string(pk, ""), sk)
+    if empty_res == "":
+        print("[PASSED] Edge Case: Empty string handled correctly.")
+run_string_security_tests(pk, my_message)
