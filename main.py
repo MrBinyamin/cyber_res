@@ -76,7 +76,9 @@ if __name__ == "__main__":
     pk, sk = generate_keys()
 
     #test encryption and decryption of a full string
-    my_message = "CyberProject2026"
+    my_message = ("This is a larger test message to demonstrate the LWE-based encryption over multiple "
+                  "characters: CyberProject2026 - Encryption demo. It includes numbers 12345, punctuation, and "
+                  "mixed case to exercise the bitwise encoding and show expansion/benchmarking behavior.")
     print(f"--- Testing Full String Encryption ---")
     print(f"Original Text: {my_message}")
 
@@ -179,5 +181,7 @@ def benchmark_performance(public_key, private_key):
 
 
 pk, sk = generate_keys()
-my_message = "CyberProject2026"
+my_message = ("This is a larger test message to demonstrate the LWE-based encryption over multiple "
+              "characters: CyberProject2026 - Encryption demo. It includes numbers 12345, punctuation, and "
+              "mixed case to exercise the bitwise encoding and show expansion/benchmarking behavior.")
 benchmark_performance(pk, sk)
