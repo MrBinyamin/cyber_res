@@ -1,59 +1,55 @@
 import numpy as np
 import time
 
-# --- 1. הגדרת פרמטרים (על פי תקן Kyber/ML-KEM בגרסה מופשטת) ---
-MODULO = 3329  # המודולו הסטנדרטי [cite: 28]
-N = 4  # ממד המטריצה (לצורכי הפרויקט הלימודי) [cite: 56]
+MODULO = 3329 #common prime modulus for LWE-based schemes
+N = 4 #matrix size
 
 
-# --- 2. פונקציות ליבת האלגוריתם ---
 
 def generate_keys():
-    """ייצור מפתח ציבורי ופרטי מבוסס Module-LWE [cite: 52, 58]"""
-    A = np.random.randint(0, MODULO, (N, N))  # מטריצה ציבורית
-    s = np.random.randint(-2, 3, size=(N, 1))  # מפתח פרטי (ווקטור סודי)
-    e = np.random.randint(-1, 2, size=(N, 1))  # רעש (Error)
+    """create public and private keys for the LWE-based encryption scheme """
+    A = np.random.randint(0, MODULO, (N, N))
+    s = np.random.randint(-2, 3, size=(N, 1))
+    e = np.random.randint(-1, 2, size=(N, 1))
 
-    # חישוב המפתח הציבורי: t = As + e
+    #calculate t = A * s + e (modulo) - public key component
     t = (np.matmul(A, s) + e) % MODULO
     return (A, t), s
 
 
 def encrypt(public_key, message_bit):
-    """הצפנת ביט בודד (0 או 1) [cite: 58]"""
+    """encrypt a single bit using the public key"""
     A, t = public_key
     r = np.random.randint(-2, 3, size=(N, 1))
     e1 = np.random.randint(-1, 2, size=(N, 1))
     e2 = np.random.randint(-1, 2)
 
-    # u = A^T * r + e1
+    #calculate u and v for the ciphertext
     u = (np.matmul(A.T, r) + e1) % MODULO
-    # v = t^T * r + e2 + (Message * MODULO/2)
     v = (np.matmul(t.T, r) + e2 + (message_bit * (MODULO // 2))) % MODULO
     return u, v
 
 
 def decrypt(ciphertext, private_key):
-    """פענוח ביט בודד בעזרת המפתח הפרטי [cite: 58, 60]"""
+    """decrypt the ciphertext using the private key and return the original bit"""
     u, v = ciphertext
     s = private_key
 
-    # ניקוי הרעש: v - s^T * u
+    #cleaning the noise from the ciphertext to recover the message bit
     res = (v - np.matmul(s.T, u)) % MODULO
 
-    # החלטה: האם הערך קרוב יותר ל-0 או ל-MODULO/2
+    #decide if the result corresponds to a 0 or 1 based on its position in the modulo range
     if (MODULO // 4) < res < (3 * MODULO // 4):
         return 1
     return 0
 
 
-# --- 3. פונקציות לטיפול בטקסט מלא (Arbitrary Message)  ---
 
 def encrypt_string(public_key, plain_text):
-    """הפיכת מחרוזת לרשימת צפנים קוונטיים"""
+    """encrypt a full string by encrypting each character bit by bit and returning a list of ciphertexts"""
     ciphertext_list = []
     for char in plain_text:
-        bits = format(ord(char), '08b')  # הפיכת תו ל-8 ביטים
+        bits = format(ord(char), '08b')
         for bit in bits:
             cipher = encrypt(public_key, int(bit))
             ciphertext_list.append(cipher)
@@ -61,7 +57,7 @@ def encrypt_string(public_key, plain_text):
 
 
 def decrypt_string(ciphertext_list, private_key):
-    """פענוח רשימת צפנים חזרה למחרוזת טקסט"""
+    """decrypt a list of ciphertexts to recover the original string"""
     decrypted_bits = ""
     for cipher in ciphertext_list:
         bit = decrypt(cipher, private_key)
@@ -74,26 +70,24 @@ def decrypt_string(ciphertext_list, private_key):
     return "".join(chars)
 
 
-# --- 4. הרצה ובדיקה ---
 
 if __name__ == "__main__":
-    # יצירת מפתחות (אליס)
+    #create keys
     pk, sk = generate_keys()
 
-    # הודעה לבדיקה
+    #test encryption and decryption of a full string
     my_message = "CyberProject2026"
     print(f"--- Testing Full String Encryption ---")
     print(f"Original Text: {my_message}")
 
-    # הצפנה (בוב)
+    #the encryption process will produce a list of ciphertexts, one for each bit of the message
     encrypted_data = encrypt_string(pk, my_message)
     print(f"Encrypted blocks: {len(encrypted_data)}")
 
-    # פענוח (אליס)
     decrypted_result = decrypt_string(encrypted_data, sk)
     print(f"Decrypted Text: {decrypted_result}")
 
-    # בדיקת תקינות (Validation)
+    #verify that the decrypted text matches the original message
     if my_message == decrypted_result:
         print("\n[SUCCESS] The message was recovered perfectly!")
     else:
@@ -101,24 +95,20 @@ if __name__ == "__main__":
 
 
 def run_performance_benchmarking(pk, message):
+    """benchmark the performance of encryption and decryption for the given message and keys"""
     print(f"\n--- Performance Analysis ---")
 
-    # 1. מדידת זמן הצפנה
     start_enc = time.time()
     encrypted_data = encrypt_string(pk, message)
     end_enc = time.time()
     enc_time = end_enc - start_enc
 
-    # 2. מדידת זמן פענוח
     start_dec = time.time()
     decrypted_result = decrypt_string(encrypted_data, sk)
     end_dec = time.time()
     dec_time = end_dec - start_dec
 
-    # 3. ניתוח גדלים (Overhead)
-    original_size = len(message) * 8  # גודל בביטים
-    # כל בלוק צופן מורכב מ-u (וקטור בגודל N) ומ-v (ערך בודד)
-    # במימוש שלנו כל מספר הוא integer
+    original_size = len(message) * 8
     cipher_elements = len(encrypted_data) * (N + 1)
 
     print(f"Total Encryption Time: {enc_time:.4f} seconds")
@@ -127,18 +117,16 @@ def run_performance_benchmarking(pk, message):
     print(f"Data Expansion Factor: {cipher_elements / len(message):.1f}x (Lattice overhead)")
 
 
-# הוסף את השורה הזו בסוף ה-if __name__ == "__main__":
 run_performance_benchmarking(pk, my_message)
 
 
 def run_string_security_tests(pk, original_text):
+    """perform security tests by tampering with the ciphertext and using wrong keys to ensure the system's robustness"""
     print(f"\n--- String Security & Negative Tests ---")
 
-    # 1. בדיקת שינוי תו בודד בצופן (Tampering Test)
-    # אנחנו משנים את הצופן של התו הראשון כדי לראות אם הפענוח נהרס
     encrypted_data = encrypt_string(pk, original_text)
 
-    # ניקח את הביט הראשון של התו הראשון ונשבש אותו
+
     u_orig, v_orig = encrypted_data[0]
     tampered_v = (v_orig + (MODULO // 2)) % MODULO
     encrypted_data[0] = (u_orig, tampered_v)
@@ -151,8 +139,7 @@ def run_string_security_tests(pk, original_text):
     else:
         print(f"[FAILED] Tampering Test: The system is too stable, it ignored the change.")
 
-    # 2. בדיקת מפתח לא תואם (Invalid Key Test)
-    # יצירת סט מפתחות חדש לגמרי וניסיון לפענח איתו את ההודעה של אליס
+
     _, wrong_sk = generate_keys()
     decrypted_with_wrong_key = decrypt_string(encrypt_string(pk, original_text), wrong_sk)
 
@@ -161,15 +148,15 @@ def run_string_security_tests(pk, original_text):
     else:
         print(f"[FAILED] Invalid Key Test: Security breach! Wrong key decrypted the message.")
 
-    # 3. בדיקת מקרה קצה: מחרוזת ריקה (Empty String)
-    # סעיף 4.4 דורש בדיקת Edge cases כמו empty messages
+
     empty_res = decrypt_string(encrypt_string(pk, ""), sk)
     if empty_res == "":
         print("[PASSED] Edge Case: Empty string handled correctly.")
 run_string_security_tests(pk, my_message)
 
 
-def benchmark_performance(public_key, private_key):  # וודא שזה private_key
+def benchmark_performance(public_key, private_key):
+    """benchmark the encryption and decryption times for messages of varying lengths to analyze performance scaling"""
     test_messages = [
         "A",
         "Hello",
@@ -180,12 +167,10 @@ def benchmark_performance(public_key, private_key):  # וודא שזה private_k
     print("-" * 55)
 
     for msg in test_messages:
-        # הצפנה
         start_enc = time.time()
         cipher = encrypt_string(public_key, msg)
         end_enc = time.time()
 
-        # פענוח - וודא שאתה מעביר את private_key שקיבלת כפרמטר
         start_dec = time.time()
         decrypted = decrypt_string(cipher, private_key)
         end_dec = time.time()
@@ -193,7 +178,6 @@ def benchmark_performance(public_key, private_key):  # וודא שזה private_k
         print(f"{len(msg):<20} | {end_enc - start_enc:<15.5f} | {end_dec - start_dec:<15.5f}")
 
 
-# כשאתה קורא לפונקציה בסוף הקובץ:
-pk, sk = generate_keys()  # sk הוא המפתח הפרטי (Secret Key)
+pk, sk = generate_keys()
 my_message = "CyberProject2026"
-benchmark_performance(pk, sk)  # תעביר את sk כאן
+benchmark_performance(pk, sk)
